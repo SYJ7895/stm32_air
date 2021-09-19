@@ -10,6 +10,7 @@ extern ST_ESP_STATE UC_state ;
 extern uint8_t gIsConf;
 extern uint8_t gNetState;
 uint32_t tickrep = 0;
+uint8_t configap = 0;
 
 #define NET_TIMEOUT 10  //网络包超时10s
 #define TRY_TIMES  3
@@ -130,6 +131,7 @@ void IPD_process(char * data,uint16_t alllen,ST_ESP_STATE* uc)
 				   ESP8266_Netstate_set(NET_LOSE);
 				}else if(strstr(data,"IP:")){
 					if(gIsConf != 1){
+						configap = 0;
 						memset(uc->server_ip,0,IPLEN);
 						tmp = strstr(data,"IP:")+strlen("IP:");
 						tmp2 = strstr(tmp,"\r\n");
@@ -147,6 +149,22 @@ void IPD_process(char * data,uint16_t alllen,ST_ESP_STATE* uc)
 						sprintf(cmd,"%s","OK");
 					    ESP8266_SendString ( DISABLE, cmd,strlen(cmd), Multiple_ID_0 );
 					}
+				}else if(strstr(data,"ssid:")){
+					memset(UC_state.ssid_tmp,0,AP_SSID_LEN);
+					memset(UC_state.pass_tmp,0,AP_PASS_LEN);
+					tmp = strstr(data,"ssid:") + strlen("ssid:");
+					tmp2 = strstr(tmp,"\r\n");
+					memcpy(UC_state.ssid_tmp,tmp,(tmp2-tmp));
+					tmp = strstr(tmp2,"password:") + strlen("password:");
+					tmp2 = strstr(tmp,"\r\n");
+					if(!tmp2){
+					   memcpy(UC_state.pass_tmp,tmp,strlen(tmp));
+					}else{
+					   memcpy(UC_state.pass_tmp,tmp,(tmp2-tmp));
+					}
+
+                    ESP8266_JoinAP(UC_state.ssid_tmp,UC_state.pass_tmp);
+                    configap = 1;//开始验证WIFI信息					
 				}
 
 			   return ;

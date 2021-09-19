@@ -139,6 +139,7 @@ void ESP8266_Cmd(char * cmd);
 void ESP8266_Netstate_set(uint8_t state);
 bool ESP8266_Net_Mode_Choose( ENUM_Net_ModeTypeDef enumMode );
 void ESP8266_JoinAP     ( char * pSSID, char * pPassWord );
+void ESP8266_JoinState(void);
 void ESP8266_BuildAP( char * pSSID, char * pPassWord, ENUM_AP_PsdMode_TypeDef enunPsdMode );
 bool ESP8266_Enable_MultipleId         ( FunctionalState enumEnUnvarnishTx );
 void ESP8266_Link_Server( ENUM_NetPro_TypeDef enumE, char * ip, char * ComNum, ENUM_ID_NO_TypeDef id);

@@ -7,12 +7,14 @@
 #include "msg_handler.h"
 #include "Sact-misc.h"
 #include "flash.h"
+#include <stdlib.h>
 
 #define IO_TIMEOUT 10
 
 static void                   ESP8266_USART_Config                ( void );
 static void                   ESP8266_USART_NVIC_Configuration    ( void );
 extern uint8_t gIsConf;
+extern uint8_t configap;
 
 
 ST_Esp8266_Fram_Record Wifi_Fram = { 0 };
@@ -286,8 +288,15 @@ bool ESP8266_Net_Mode_Choose ( ENUM_Net_ModeTypeDef enumMode )
 void  ESP8266_BuildAP ( char * pSSID, char * pPassWord, ENUM_AP_PsdMode_TypeDef enunPsdMode )
 {
 	char cCmd [120];
-
-	sprintf ( cCmd, "AT+CWSAP=\"%s\",\"%s\",5,%d", pSSID, pPassWord, enunPsdMode );
+	int p = 0;
+	srand(gettick());
+    p= rand()%1000;      //产生一个30到50的随机数
+	
+	if(UC_state.State.getsn){
+		sprintf ( cCmd, "AT+CWSAP_CUR=\"AP%s_%s\",\"%s\",5,%d", pSSID,UC_state.SN, pPassWord, enunPsdMode );
+	}else{
+		sprintf ( cCmd, "AT+CWSAP_CUR=\"AP%s_%d\",\"%s\",5,%d", pSSID,p, pPassWord, enunPsdMode );
+	}
 	
     ESP8266_Cmd ( cCmd);
 	
@@ -319,16 +328,25 @@ void ESP_8266_JoinDefAP(ST_ESP_STATE *uc)
    ESP8266_JoinAP(uc->AP_info.ssid,uc->AP_info.pass);
 }
 
+void ESP8266_JoinState(void)
+{
+	char cCmd [120];
+
+	sprintf ( cCmd, "AT+CWJAP?");
+	
+    ESP8266_Cmd (cCmd);
+	
+}
+
 void ESP_8266_SaveDefAP(ST_ESP_STATE *uc)
 {
-   uint16_t len = 0;
    memset(uc->AP_info.ssid,0,AP_SSID_LEN);
    memset(uc->AP_info.pass,0,AP_PASS_LEN);
    memcpy(uc->AP_info.ssid,uc->ssid_tmp,strlen(uc->ssid_tmp));
    memcpy(uc->AP_info.pass,uc->pass_tmp,strlen(uc->pass_tmp));
-   len = flash_write(CONFIG_DEFAULT_AP,(uint8_t*)&uc->AP_info , sizeof(uc->AP_info));
+   flash_write(CONFIG_DEFAULT_AP,(uint8_t*)&uc->AP_info , sizeof(uc->AP_info));
    DEBUG("save ap ssid_tmp %s ,pass_tmp %s\r\n",uc->ssid_tmp,uc->pass_tmp);
-   DEBUG("save ap ssid %s ,pass %s len %d ret:%d\r\n",uc->AP_info.ssid,uc->AP_info.pass,sizeof(uc->AP_info),len);
+   DEBUG("save ap ssid %s ,pass %s len %d\r\n",uc->AP_info.ssid,uc->AP_info.pass,sizeof(uc->AP_info));
 
 }
 
@@ -566,6 +584,7 @@ void ESP8266_AT_rsp(void)
 	char * data = Wifi_Fram.Data_RX_BUF;
     char * tmp = NULL;
 	char * tmp2 = NULL;
+	char cmd[10] = {0};
  
 	
 	if(Wifi_Fram .InfBit .FramFinishFlag && Wifi_Fram .InfBit.FramLength){
@@ -576,7 +595,7 @@ void ESP8266_AT_rsp(void)
 	    Wifi_Fram .InfBit.FramLength = 0;
 		
 		USART_ITConfig ( ESP8266_USARTx, USART_IT_RXNE, DISABLE ); //禁用串口接收中断
-		
+#if 0
 		  if(strstr(data,"smartconfig connected wifi")){
 		     ESP8266_StopConf();
 			 UC_state.mode = STA_AP;
@@ -586,10 +605,12 @@ void ESP8266_AT_rsp(void)
 	         ESP8266_MAXCONN(1);
 	         delay_ms(100);
 	         ESP8266_StartOrShutServer(ENABLE,"8080",ESP8266_TcpServer_OverTime);
-		  }else if (strstr(data,"WIFI GOT IP") || strstr(data,"WIFI CONNECTED") ||
+		  }else
+#endif
+		  if (strstr(data,"WIFI GOT IP") || strstr(data,"WIFI CONNECTED") ||
 			(strstr(data,"+CWJAP") && strstr(data,"OK"))){ //成功接入AP
 			
-			DEBUG("join ap success state\r\n");
+//			DEBUG("join ap success state\r\n");
 			
 			if(UC_state.mode == STA){
 				DEBUG("sta \r\n");
@@ -597,9 +618,13 @@ void ESP8266_AT_rsp(void)
 				if(UC_state.State.change_ap){
                    ESP_8266_SaveDefAP(&UC_state);
 				}
+			}else if(UC_state.mode == STA_AP){
+                ESP_8266_SaveDefAP(&UC_state);//保存配置的无线信息	
+                sprintf(cmd,"%s","apok");				
+				ESP8266_SendString ( DISABLE,cmd ,strlen(cmd), Multiple_ID_0 );
 			}
 		}else if(strstr(data,"+CWJAP:")&&strstr(data,"FAIL")){  //接入AP失败
-			DEBUG("join ap error\r\n");
+//			DEBUG("join ap error\r\n");
 			if(UC_state.mode == STA && UC_state.State.change_ap == 1){
 				tmp = strstr(data,"+CWJAP:");
 				UC_state.change_ap_result = *(tmp+strlen("+CWJAP:")) - '0';
@@ -607,13 +632,17 @@ void ESP8266_AT_rsp(void)
 				DEBUG(" ESP_8266_JoinDefAP \r\n");
 				ESP_8266_JoinDefAP(&UC_state);
 				UC_state.State.join_ap = 0;
+			}else if(UC_state.mode == STA_AP){
+				configap = 0;
+			    sprintf(cmd,"%s","apfail");				
+				ESP8266_SendString ( DISABLE,cmd ,strlen(cmd), Multiple_ID_0 );
 			}else{
-				DEBUG(" join err mode %d change_ap %d \r\n",UC_state.mode,UC_state.State.join_ap);
+//				DEBUG(" join err mode %d change_ap %d \r\n",UC_state.mode,UC_state.State.join_ap);
 				Mcu2Iot_join_ap_rsp(data,&UC_state);
 			}
 		}else if(strstr(data,"+CIPMODE")&&strstr(data,"OK")){  //进入透传模式
                ESP8266_Cmd ("AT+CIPSEND");
-			   DEBUG("enter Penetrate mode\r\n");
+//			   DEBUG("enter Penetrate mode\r\n");
                UC_state.State.Penetrate = 1;
 			   if(!UC_state.State.isUpgrade){
 			      ESP8266_Netstate_set(NET_MOUNT);
@@ -623,7 +652,7 @@ void ESP8266_AT_rsp(void)
 		}else if(strstr(data,"ALREADY CONNECTED") ||
 			     (strstr(data,"+CIPSTART")&&strstr(data,"OK"))){ //成功连接服务器
 			     
-		    DEBUG("already connect\r\n");
+//		    DEBUG("already connect\r\n");
             UC_state.State.link = 1;
 		}else if(strstr(data,"+IPD,")){
 			tmp = strstr(data,":"); //收到网络包，进行处理
@@ -643,8 +672,8 @@ void ESP8266_AT_rsp(void)
 			}else{
 			   memcpy(UC_state.pass_tmp,tmp,(tmp2-tmp));
 			}
-			DEBUG("password: %s\r\n",UC_state.pass_tmp);
-			DEBUG("ssid %s\r\n",UC_state.ssid_tmp);		
+//			DEBUG("password: %s\r\n",UC_state.pass_tmp);
+//			DEBUG("ssid %s\r\n",UC_state.ssid_tmp);		
 		}
 //	   memset(Wifi_Fram.Data_RX_BUF,0,sizeof(Wifi_Fram.Data_RX_BUF));
 	   USART_ITConfig ( ESP8266_USARTx, USART_IT_RXNE, ENABLE ); //使能串口接收中断
@@ -660,6 +689,11 @@ void ESP8266_AT_send(ST_ESP_STATE *uc)
   static uint32_t io_tick = 0;
 
   if(uc->mode == AUTOCONF || uc->mode == STA_AP ){
+	if(configap && ((io_tick + IO_TIMEOUT) < gettick())){
+	   io_tick = gettick();
+	   ESP8266_JoinState();
+	}
+	
     ESP8266_AT_rsp();
 	return;
   }
@@ -728,27 +762,39 @@ void ESP8266_Init ( void )
 	flash_read(UPGRADE_INFO_ADDR,&UC_state.upgradeRest,sizeof(UC_state.upgradeRest));
 
 
-	DEBUG("isConf %d,UC_state.AP_info :%s,%s ; server:%s,upgrade:%d\r\n",gIsConf,UC_state.AP_info.ssid,UC_state.AP_info.pass,UC_state.server_ip,UC_state.upgradeRest);
+//	DEBUG("isConf %d,UC_state.AP_info :%s,%s ; server:%s,upgrade:%d\r\n",gIsConf,UC_state.AP_info.ssid,UC_state.AP_info.pass,UC_state.server_ip,UC_state.upgradeRest);
 	
 	//ESP8266_ExitUnvarnishSend ();
-	DEBUG("wifi reset 1\r\n");
+//	DEBUG("wifi reset 1\r\n");
 	//ESP8266_Rst();
 	UC_state.hb_prb = 60;
 	UC_state.State.getsn = 0;
 	
+	while(UC_state.State.getsn == 0){
+	  get_mac2sn();
+	  delay_ms(100);
+	  ESP8266_AT_rsp();
+	}
+	
+	
 	if(gIsConf != 1 ){
-	  DEBUG("enter auto config\r\n");
+//	  DEBUG("enter auto config\r\n");
 	  UC_state.upgradeRest = NOUPGRADE;
 	  flash_write(UPGRADE_INFO_ADDR,(uint8_t*)&UC_state.upgradeRest,sizeof(UC_state.upgradeRest));
-	  UC_state.mode = AUTOCONF;
+	  UC_state.mode = STA_AP;
 	  ESP8266_Rst();
-	  DEBUG("wifi reset\r\n");
+//	  DEBUG("wifi reset\r\n");
+	  delay_ms(500);
+	  ESP8266_Net_Mode_Choose(STA_AP);
+//	  DEBUG("wifi set to sta\r\n");
 	  delay_ms(300);
-	//  ESP8266_Cmd("AT+CWAUTOCONN = 0");
-	  ESP8266_Net_Mode_Choose(STA);
-	  DEBUG("wifi set to sta\r\n");
+	  ESP8266_BuildAP("ESP","1234567890",OPEN);
 	  delay_ms(300);
-	  ESP8266_StartConf();
+	  ESP8266_Enable_MultipleId(ENABLE);
+  	  delay_ms(100);
+	  ESP8266_MAXCONN(1);
+	  delay_ms(100);
+	  ESP8266_StartOrShutServer(ENABLE,"8080",ESP8266_TcpServer_OverTime);
 	}else{
 	   delay_ms(100);
 	   ESP8266_Rst();

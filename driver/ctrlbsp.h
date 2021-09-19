@@ -18,7 +18,7 @@
 #define TIM3_Time 1
 #endif
 
-#define  __DEBUG
+//#define  __DEBUG
 #define  USE_EEPROM
 
 void CTRLBSP_Init(void);//∞Âº∂≈‰÷√
