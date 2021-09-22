@@ -15,6 +15,7 @@ struct st{
 
 uint8_t gIsConf = 0;
 uint8_t gNetState = 0;
+extern uint8_t joinret;
 
 int main()
 {
@@ -36,6 +37,7 @@ int main()
 	
 	while(start){
 	#if 1
+//		autoconfig();
 		ESP8266_process();
 		LCD_Disp_Update();
 	#endif

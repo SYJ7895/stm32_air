@@ -74,6 +74,7 @@ typedef struct{
 			__IO u16 getsn:1;     //获取到SN
 		    __IO u16 isUpgrade:1; //升级标志
 		    __IO u16 upgrading:1; //开始升级
+		    __IO u16 getip:1; //开始升级
 	} State;
 
 	struct{
@@ -84,6 +85,8 @@ typedef struct{
 	char ssid_tmp [AP_SSID_LEN];
 	char pass_tmp [AP_PASS_LEN];
 	char server_ip [IPLEN];
+	char udps_ip [IPLEN];
+	char sta_ip [IPLEN];
 } ST_ESP_STATE;
 
 
@@ -139,6 +142,7 @@ void ESP8266_Cmd(char * cmd);
 void ESP8266_Netstate_set(uint8_t state);
 bool ESP8266_Net_Mode_Choose( ENUM_Net_ModeTypeDef enumMode );
 void ESP8266_JoinAP     ( char * pSSID, char * pPassWord );
+void ESP8266_JoinAPCUR ( char * pSSID, char * pPassWord );
 void ESP8266_JoinState(void);
 void ESP8266_BuildAP( char * pSSID, char * pPassWord, ENUM_AP_PsdMode_TypeDef enunPsdMode );
 bool ESP8266_Enable_MultipleId         ( FunctionalState enumEnUnvarnishTx );
@@ -153,6 +157,7 @@ bool ESP8266_SendString( FunctionalState enumEnUnvarnishTx, char * pStr, u32 ulS
 void ESP8266_process(void);
 void IPD_process(char * data,uint16_t alllen,ST_ESP_STATE* uc);
 void ESP8266_AT_send(ST_ESP_STATE *uc);
+void autoconfig(void);
 
 
 #endif

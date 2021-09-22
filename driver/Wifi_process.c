@@ -11,6 +11,7 @@ extern uint8_t gIsConf;
 extern uint8_t gNetState;
 uint32_t tickrep = 0;
 uint8_t configap = 0;
+extern uint8_t curjoin;
 
 #define NET_TIMEOUT 10  //网络包超时10s
 #define TRY_TIMES  3
@@ -118,7 +119,6 @@ void IPD_process(char * data,uint16_t alllen,ST_ESP_STATE* uc)
 		len = mcu_ntohs(pack->len);
 		DEBUG("allen %d ,len %d\r\n",alllen,len);
         alllen = alllen - len;
-		
 		if(data){
 			crc8 = cal_crc_table((uint8_t*)data+1, len-1);
 			if(crc8 != pack->crc8){
@@ -129,27 +129,8 @@ void IPD_process(char * data,uint16_t alllen,ST_ESP_STATE* uc)
 				   uc->State.Penetrate = 0;
 				   ESP8266_CLOSE_Link();
 				   ESP8266_Netstate_set(NET_LOSE);
-				}else if(strstr(data,"IP:")){
-					if(gIsConf != 1){
-						configap = 0;
-						memset(uc->server_ip,0,IPLEN);
-						tmp = strstr(data,"IP:")+strlen("IP:");
-						tmp2 = strstr(tmp,"\r\n");
-						if(!tmp2){
-						   memcpy(uc->server_ip,tmp,strlen(tmp));
-						}else{
-						   memcpy(uc->server_ip,tmp,(tmp2-tmp));
-						}
-						
-						DEBUG("get IP %s\r\n",uc->server_ip);
-						SaveServerIP(uc);
-						systemRest();
-					}else{
-						char cmd[10] = {0};
-						sprintf(cmd,"%s","OK");
-					    ESP8266_SendString ( DISABLE, cmd,strlen(cmd), Multiple_ID_0 );
-					}
 				}else if(strstr(data,"ssid:")){
+					ESP8266_ExitUnvarnishSend (); //退出透传模式
 					memset(UC_state.ssid_tmp,0,AP_SSID_LEN);
 					memset(UC_state.pass_tmp,0,AP_PASS_LEN);
 					tmp = strstr(data,"ssid:") + strlen("ssid:");
@@ -157,16 +138,27 @@ void IPD_process(char * data,uint16_t alllen,ST_ESP_STATE* uc)
 					memcpy(UC_state.ssid_tmp,tmp,(tmp2-tmp));
 					tmp = strstr(tmp2,"password:") + strlen("password:");
 					tmp2 = strstr(tmp,"\r\n");
-					if(!tmp2){
-					   memcpy(UC_state.pass_tmp,tmp,strlen(tmp));
-					}else{
-					   memcpy(UC_state.pass_tmp,tmp,(tmp2-tmp));
-					}
-
+					memcpy(UC_state.pass_tmp,tmp,(tmp2-tmp));
+					memset(uc->server_ip,0,IPLEN);
+				    tmp = strstr(data,"IP:")+strlen("IP:");
+				    tmp2 = strstr(tmp,"\r\n");
+				    memcpy(uc->server_ip,tmp,(tmp2-tmp));
+					DEBUG("get IP %s\r\n",uc->server_ip);
+					SaveServerIP(uc);
+					
+                    ESP8266_Rst();
+					delay_ms(1000);
+//                    ESP8266_Cmd ("AT+CWQAP");
+//					delay_ms(100);					
                     ESP8266_JoinAP(UC_state.ssid_tmp,UC_state.pass_tmp);
-                    configap = 1;//开始验证WIFI信息					
+                    configap = 1;//开始验证WIFI信息	
+					curjoin = 2;
+                    uc->State.join_ap = 0;					
+				}else if(strstr(data,"reboot")){
+					systemRest();
+                   				
 				}
-
+                
 			   return ;
 			}
 			DEBUG("event_id: %d\r\n",pack->event_id);

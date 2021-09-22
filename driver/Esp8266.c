@@ -15,11 +15,14 @@ static void                   ESP8266_USART_Config                ( void );
 static void                   ESP8266_USART_NVIC_Configuration    ( void );
 extern uint8_t gIsConf;
 extern uint8_t configap;
-
+uint8_t joinret = 0;
+uint8_t curjoin = 0;
 
 ST_Esp8266_Fram_Record Wifi_Fram = { 0 };
 ST_ESP_STATE UC_state = {0};
 
+#define CURSSID "ESPConfig"
+#define CURPASS "12345678"
 
 void ESP8266_USART_INT_FUN(void)
 {
@@ -293,15 +296,33 @@ void  ESP8266_BuildAP ( char * pSSID, char * pPassWord, ENUM_AP_PsdMode_TypeDef 
     p= rand()%1000;      //产生一个30到50的随机数
 	
 	if(UC_state.State.getsn){
-		sprintf ( cCmd, "AT+CWSAP_CUR=\"AP%s_%s\",\"%s\",5,%d", pSSID,UC_state.SN, pPassWord, enunPsdMode );
+		sprintf ( cCmd, "AT+CWSAP=\"%s_%s\",\"%s\",1,%d", pSSID,UC_state.SN, pPassWord, enunPsdMode );
 	}else{
-		sprintf ( cCmd, "AT+CWSAP_CUR=\"AP%s_%d\",\"%s\",5,%d", pSSID,p, pPassWord, enunPsdMode );
+		sprintf ( cCmd, "AT+CWSAP=\"%s_%d\",\"%s\",1,%d", pSSID,p, pPassWord, enunPsdMode );
 	}
 	
     ESP8266_Cmd ( cCmd);
 	
 }
 
+
+/*
+ * 函数名：ESP8266_JoinAPCUR
+ * 描述  ：WF-ESP8266模块临时连接外部WiFi
+ * 输入  ：pSSID，WiFi名称字符串
+ *       ：pPassWord，WiFi密码字符串
+ * 返回  :
+ * 调用  ：被外部调用
+ */
+void ESP8266_JoinAPCUR ( char * pSSID, char * pPassWord )
+{
+	char cCmd [120];
+
+	sprintf ( cCmd, "AT+CWJAP_CUR=\"%s\",\"%s\"", pSSID, pPassWord );
+	
+    ESP8266_Cmd (cCmd);
+	
+}
 
 /*
  * 函数名：ESP8266_JoinAP
@@ -338,8 +359,19 @@ void ESP8266_JoinState(void)
 	
 }
 
+void ESP8266_GetStaIp(void)
+{
+	char cCmd [120];
+
+	sprintf ( cCmd, "AT+CIFSR");
+	
+    ESP8266_Cmd (cCmd);
+	
+}
+
 void ESP_8266_SaveDefAP(ST_ESP_STATE *uc)
 {
+   uint8_t isConf = 1;
    memset(uc->AP_info.ssid,0,AP_SSID_LEN);
    memset(uc->AP_info.pass,0,AP_PASS_LEN);
    memcpy(uc->AP_info.ssid,uc->ssid_tmp,strlen(uc->ssid_tmp));
@@ -347,20 +379,12 @@ void ESP_8266_SaveDefAP(ST_ESP_STATE *uc)
    flash_write(CONFIG_DEFAULT_AP,(uint8_t*)&uc->AP_info , sizeof(uc->AP_info));
    DEBUG("save ap ssid_tmp %s ,pass_tmp %s\r\n",uc->ssid_tmp,uc->pass_tmp);
    DEBUG("save ap ssid %s ,pass %s len %d\r\n",uc->AP_info.ssid,uc->AP_info.pass,sizeof(uc->AP_info));
-
+   flash_write(ISCONFIG, (uint8_t*)&isConf, sizeof(isConf));
 }
 
 void SaveServerIP(ST_ESP_STATE *uc)
-{
-	uint8_t isConf = 1;
-	char cmd[10] = {0};
-	sprintf(cmd,"%s","IPOK");				   
+{					   
 	flash_write(SERVER_IP,(uint8_t*)&uc->server_ip , sizeof(uc->server_ip));
-	flash_write(ISCONFIG, (uint8_t*)&isConf, sizeof(isConf));
-    ESP8266_SendString ( DISABLE, cmd,strlen(cmd), Multiple_ID_0 ); 
-    BL_SetLow;	
-	gIsConf = 1;
-    delay_ms(1000);	
 }
 
 
@@ -406,38 +430,23 @@ void ESP8266_Link_Server ( ENUM_NetPro_TypeDef enumE, char * ip, char * ComNum, 
 }
 
 
-/*
- * 函数名：ESP8266_StartOrShutServer
- * 描述  ：WF-ESP8266模块开启或关闭服务器模式
- * 输入  ：enumMode，开启/关闭
- *       ：pPortNum，服务器端口号字符串
- *       ：pTimeOver，服务器超时时间字符串，单位：秒
- * 返回  : 1，操作成功
- *         0，操作失败
- * 调用  ：被外部调用
- */
-bool ESP8266_StartOrShutServer ( FunctionalState enumMode, char * pPortNum, char * pTimeOver )
+void ESP8266_udplisten ()
 {
-	char cCmd1 [120], cCmd2 [120];
 
-	if ( enumMode )
-	{
-		sprintf ( cCmd1, "AT+CIPSERVER=%d,%s", 1, pPortNum );
-		
-		sprintf ( cCmd2, "AT+CIPSTO=%s", pTimeOver );
+   char cCmd [120] = {0};
+  
+   sprintf ( cCmd, "AT+CIPSTART=\"UDP\",\"127.0.0.1\",2223.2223,2");
 
-		ESP8266_Cmd (cCmd1);
-		delay_ms(500);
-		ESP8266_Cmd (cCmd2);
-	}
+   ESP8266_Cmd (cCmd);
 	
-	else
-	{
-		sprintf ( cCmd1, "AT+CIPSERVER=%d,%s", 0, pPortNum );
-        ESP8266_Cmd (cCmd1);
-	}
-	 return true;
-	
+}
+
+void StarUdpServer(char* ip)
+{
+	char cCmd [100] = { 0 };
+	sprintf ( cCmd, "AT+CIPSTART=\"UDP\",\"%s\",8888,8888,0",ip);
+	ESP8266_Cmd (cCmd);
+
 }
 
 
@@ -482,6 +491,43 @@ void ESP8266_MAXCONN ( uint8_t maxnum )
 	
 }
 
+/*
+ * 函数名：ESP8266_StartOrShutServer
+ * 描述  ：WF-ESP8266模块开启或关闭服务器模式
+ * 输入  ：enumMode，开启/关闭
+ *       ：pPortNum，服务器端口号字符串
+ *       ：pTimeOver，服务器超时时间字符串，单位：秒
+ * 返回  : 1，操作成功
+ *         0，操作失败
+ * 调用  ：被外部调用
+ */
+bool ESP8266_StartOrShutServer ( FunctionalState enumMode, char * pPortNum, char * pTimeOver )
+{
+	char cCmd1 [120], cCmd2 [120];
+
+	if ( enumMode )
+	{
+		ESP8266_Enable_MultipleId(ENABLE);
+		delay_ms(100);
+		ESP8266_MAXCONN(1);
+		delay_ms(100);
+		sprintf ( cCmd1, "AT+CIPSERVER=%d,%s", 1, pPortNum );
+		
+		sprintf ( cCmd2, "AT+CIPSTO=%s", pTimeOver );
+
+		ESP8266_Cmd (cCmd1);
+		delay_ms(500);
+		ESP8266_Cmd (cCmd2);
+	}
+	
+	else
+	{
+		sprintf ( cCmd1, "AT+CIPSERVER=%d,%s", 0, pPortNum );
+        ESP8266_Cmd (cCmd1);
+	}
+	 return true;
+	
+}
 
 
 void ESP8266_CLOSE_Link(void)
@@ -583,8 +629,6 @@ void ESP8266_AT_rsp(void)
 {
 	char * data = Wifi_Fram.Data_RX_BUF;
     char * tmp = NULL;
-	char * tmp2 = NULL;
-	char cmd[10] = {0};
  
 	
 	if(Wifi_Fram .InfBit .FramFinishFlag && Wifi_Fram .InfBit.FramLength){
@@ -595,18 +639,7 @@ void ESP8266_AT_rsp(void)
 	    Wifi_Fram .InfBit.FramLength = 0;
 		
 		USART_ITConfig ( ESP8266_USARTx, USART_IT_RXNE, DISABLE ); //禁用串口接收中断
-#if 0
-		  if(strstr(data,"smartconfig connected wifi")){
-		     ESP8266_StopConf();
-			 UC_state.mode = STA_AP;
-			 ESP_8266_SaveDefAP(&UC_state);
-			 ESP8266_Enable_MultipleId(ENABLE);
-  	         delay_ms(100);
-	         ESP8266_MAXCONN(1);
-	         delay_ms(100);
-	         ESP8266_StartOrShutServer(ENABLE,"8080",ESP8266_TcpServer_OverTime);
-		  }else
-#endif
+
 		  if (strstr(data,"WIFI GOT IP") || strstr(data,"WIFI CONNECTED") ||
 			(strstr(data,"+CWJAP") && strstr(data,"OK"))){ //成功接入AP
 			
@@ -618,10 +651,22 @@ void ESP8266_AT_rsp(void)
 				if(UC_state.State.change_ap){
                    ESP_8266_SaveDefAP(&UC_state);
 				}
-			}else if(UC_state.mode == STA_AP){
-                ESP_8266_SaveDefAP(&UC_state);//保存配置的无线信息	
-                sprintf(cmd,"%s","apok");				
-				ESP8266_SendString ( DISABLE,cmd ,strlen(cmd), Multiple_ID_0 );
+			}else if(UC_state.mode == AUTOCONF){ //配置模式
+				if(curjoin == 2){
+					joinret = 1;
+					ESP_8266_SaveDefAP(&UC_state);//验证下发AP信息成功，保存配置的无线信息
+					ESP8266_Rst();
+					delay_ms(100);
+					ESP8266_JoinAPCUR(CURSSID,CURPASS); //连接临时AP
+					curjoin = 0;
+					UC_state.State.join_ap = 0;
+					UC_state.State.link = 0;
+					UC_state.State.Penetrate = 0;
+				
+				}else{
+				    curjoin = 1; //连接临时AP成功
+					UC_state.State.join_ap = 1;
+				}
 			}
 		}else if(strstr(data,"+CWJAP:")&&strstr(data,"FAIL")){  //接入AP失败
 //			DEBUG("join ap error\r\n");
@@ -632,10 +677,17 @@ void ESP8266_AT_rsp(void)
 				DEBUG(" ESP_8266_JoinDefAP \r\n");
 				ESP_8266_JoinDefAP(&UC_state);
 				UC_state.State.join_ap = 0;
-			}else if(UC_state.mode == STA_AP){
-				configap = 0;
-			    sprintf(cmd,"%s","apfail");				
-				ESP8266_SendString ( DISABLE,cmd ,strlen(cmd), Multiple_ID_0 );
+			}else if(UC_state.mode == AUTOCONF){
+				if(curjoin == 2){
+					curjoin = 0;
+					joinret = 2; //验证下发AP信息有误
+                    ESP8266_Rst();
+					delay_ms(100);					
+					ESP8266_JoinAPCUR(CURSSID,CURPASS); //连接临时AP
+					UC_state.State.join_ap = 0;
+					UC_state.State.link = 0;
+                    UC_state.State.Penetrate = 0;					
+				}
 			}else{
 //				DEBUG(" join err mode %d change_ap %d \r\n",UC_state.mode,UC_state.State.join_ap);
 				Mcu2Iot_join_ap_rsp(data,&UC_state);
@@ -654,26 +706,11 @@ void ESP8266_AT_rsp(void)
 			     
 //		    DEBUG("already connect\r\n");
             UC_state.State.link = 1;
+		}else if(strstr(data,"+CIPSTAMAC:")){  //获取MAC
+            mac2sn(data,&UC_state);
 		}else if(strstr(data,"+IPD,")){
 			tmp = strstr(data,":"); //收到网络包，进行处理
 			IPD_process(tmp+1,strlen(tmp)-1,&UC_state);
-		}else if(strstr(data,"+CIPSTAMAC:")){  //获取MAC
-            mac2sn(data,&UC_state);
-		}else if(strstr(data,"ssid:")){
-			memset(UC_state.ssid_tmp,0,AP_SSID_LEN);
-			memset(UC_state.pass_tmp,0,AP_PASS_LEN);
-			tmp = strstr(data,"ssid:") + strlen("ssid:");
-			tmp2 = strstr(tmp,"\r\n");
-			memcpy(UC_state.ssid_tmp,tmp,(tmp2-tmp));
-			tmp = strstr(tmp2,"password:") + strlen("password:");
-			tmp2 = strstr(tmp,"\r\n");
-			if(!tmp2){
-			   memcpy(UC_state.pass_tmp,tmp,strlen(tmp));
-			}else{
-			   memcpy(UC_state.pass_tmp,tmp,(tmp2-tmp));
-			}
-//			DEBUG("password: %s\r\n",UC_state.pass_tmp);
-//			DEBUG("ssid %s\r\n",UC_state.ssid_tmp);		
 		}
 //	   memset(Wifi_Fram.Data_RX_BUF,0,sizeof(Wifi_Fram.Data_RX_BUF));
 	   USART_ITConfig ( ESP8266_USARTx, USART_IT_RXNE, ENABLE ); //使能串口接收中断
@@ -687,38 +724,65 @@ void ESP8266_AT_send(ST_ESP_STATE *uc)
 {
 
   static uint32_t io_tick = 0;
+  char cmd[50] = {0};
 
-  if(uc->mode == AUTOCONF || uc->mode == STA_AP ){
-	if(configap && ((io_tick + IO_TIMEOUT) < gettick())){
-	   io_tick = gettick();
-	   ESP8266_JoinState();
+  uint8_t Tout = IO_TIMEOUT;
+	if(gIsConf != 1){
+		if(uc->State.join_ap){
+			Tout = 3;
+		}else{
+			Tout = 20;
+		}
+        
 	}
-	
-    ESP8266_AT_rsp();
-	return;
-  }
 
   if(uc->State.join_ap &&
   	 uc->State.link &&
   	 uc->State.Penetrate){
+		 if(gIsConf != 1 && (io_tick + IO_TIMEOUT) < gettick()){
+    		 io_tick = gettick();
+			 if(curjoin == 1){
+				if (joinret == 1){
+					sprintf(cmd,"apok:%s\r\n",uc->SN);
+										
+				}else if(joinret == 2){		 
+					sprintf(cmd,"apfail:%s\r\n",uc->SN);					
+				}else{
+					sprintf(cmd,"apreq:%s\r\n",uc->SN);
+				}
+                ESP8266_SendString ( ENABLE,cmd,strlen(cmd), Single_ID_0 );				
+			 }
+		 }
 
   }else{
 
-     if((io_tick + IO_TIMEOUT) < gettick() ){
+     if((io_tick + Tout) < gettick() ){
          io_tick = gettick();
 		
 	     if(!uc->State.join_ap){
-		 	ESP_8266_JoinDefAP(uc);	
+			 if(gIsConf != 1 ){	
+				 if(curjoin == 2){
+//					 ESP8266_JoinState();
+				     ESP8266_JoinAPCUR(UC_state.ssid_tmp,UC_state.pass_tmp);
+				 }else{
+					 ESP8266_JoinAPCUR("ESPConfig","12345678");; //继续尝试连接临时AP				 
+				 }
+				 
+			 }else{
+				 ESP_8266_JoinDefAP(uc);				 
+			 }
+		 	
 		 }
 		 
 		 if(uc->State.join_ap && !uc->State.getsn){
 		 	 get_mac2sn();
 		 }
-		 
         
 		 if(uc->State.getsn && !uc->State.link){
 
-		 	if(!uc->State.isUpgrade){
+		 	if(gIsConf != 1){	
+				ESP8266_Link_Server (enumUDP, "255.255.255.255","12345", Single_ID_0); 						
+			}else if(!uc->State.isUpgrade){
 			  ESP8266_Link_Server (enumUDP, uc->server_ip, ESP8266_UdpServer_Port, Single_ID_0);
 			}else{
 			  delay_ms(1000);
@@ -727,9 +791,7 @@ void ESP8266_AT_send(ST_ESP_STATE *uc)
 		 }
 
 		 if(uc->State.link && !uc->State.Penetrate){
-		 	
 		 	ESP8266_UnvarnishSend();
-			
 		 }
 
 	 }
@@ -770,31 +832,31 @@ void ESP8266_Init ( void )
 	UC_state.hb_prb = 60;
 	UC_state.State.getsn = 0;
 	
-	while(UC_state.State.getsn == 0){
-	  get_mac2sn();
-	  delay_ms(100);
-	  ESP8266_AT_rsp();
-	}
-	
 	
 	if(gIsConf != 1 ){
+	  curjoin = 0; //还未连接临时AP
+      joinret = 0; //还未测试下发AP信息	
 //	  DEBUG("enter auto config\r\n");
 	  UC_state.upgradeRest = NOUPGRADE;
 	  flash_write(UPGRADE_INFO_ADDR,(uint8_t*)&UC_state.upgradeRest,sizeof(UC_state.upgradeRest));
-	  UC_state.mode = STA_AP;
-	  ESP8266_Rst();
-//	  DEBUG("wifi reset\r\n");
-	  delay_ms(500);
+	  UC_state.mode = AUTOCONF;
+//	  ESP8266_Cmd ( "AT+SLEEP=0");
+//	  delay_ms(200);
+//	  ESP8266_Cmd ( "AT+CWAUTOCONN=1");
+	  ESP8266_Rstore();
+//	  delay_ms(1000);
+	  while(UC_state.State.getsn == 0){
+		  get_mac2sn();
+		  delay_ms(100);
+		  ESP8266_AT_rsp();
+    	}
+	  delay_ms(200);
 	  ESP8266_Net_Mode_Choose(STA_AP);
-//	  DEBUG("wifi set to sta\r\n");
-	  delay_ms(300);
-	  ESP8266_BuildAP("ESP","1234567890",OPEN);
-	  delay_ms(300);
-	  ESP8266_Enable_MultipleId(ENABLE);
-  	  delay_ms(100);
-	  ESP8266_MAXCONN(1);
-	  delay_ms(100);
-	  ESP8266_StartOrShutServer(ENABLE,"8080",ESP8266_TcpServer_OverTime);
+	  delay_ms(200);
+	  ESP8266_Cmd ( "AT+SLEEP=0");
+	  delay_ms(200);
+	  ESP8266_JoinAPCUR("ESPConfig","12345678");
+    	
 	}else{
 	   delay_ms(100);
 	   ESP8266_Rst();
@@ -809,4 +871,30 @@ void ESP8266_Init ( void )
 	   UC_state.State.isUpgrade = 0;	  
 	}
 	
+}
+
+void autoconfig()
+{
+	static uint32_t tick = 0;
+	if(gIsConf != 1 ){	
+		if(!curjoin && ((tick + IO_TIMEOUT) < gettick())){
+		   tick = gettick();
+		    ESP8266_JoinAPCUR("ESPConfig","12345678");; //继续尝试连接临时AP
+		}
+		if(curjoin == 2 && ((tick + IO_TIMEOUT) < gettick())){
+		   tick = gettick();  
+		   ESP8266_SendString ( ENABLE,"apreq",5, Single_ID_0 ); //继续请求ap信息
+		}
+		
+		if(configap && !joinret && ((tick + 15) < gettick())){
+			tick = gettick();  
+		   ESP8266_JoinState(); //查询加入AP信息	
+		}
+		 
+		if(curjoin == 1 && ((tick + IO_TIMEOUT) < gettick())){
+			tick = gettick(); 
+		  ESP8266_SendString ( ENABLE,"apok",4, Single_ID_0 );
+					LCD_Set_Temp(11,1);
+		}
+	}
 }
