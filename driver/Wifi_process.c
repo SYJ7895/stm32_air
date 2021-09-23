@@ -123,7 +123,7 @@ void IPD_process(char * data,uint16_t alllen,ST_ESP_STATE* uc)
 			crc8 = cal_crc_table((uint8_t*)data+1, len-1);
 			if(crc8 != pack->crc8){
 			   DEBUG("pack crc error :%d,crc8:%d ,event_id: %d\r\n",pack->crc8,crc8,pack->event_id);
-			   if(strstr(data,"busy") || strstr(data,"ERROR")){
+			   if((strstr(data,"busy") || strstr(data,"ERROR")) && gIsConf == 1){
 				   ESP8266_ExitUnvarnishSend (); //退出透传模式
 				   uc->State.link = 0;
 				   uc->State.Penetrate = 0;
@@ -146,10 +146,10 @@ void IPD_process(char * data,uint16_t alllen,ST_ESP_STATE* uc)
 					DEBUG("get IP %s\r\n",uc->server_ip);
 					SaveServerIP(uc);
 					
-                    ESP8266_Rst();
+//                    ESP8266_Rst();
 					delay_ms(1000);
-//                    ESP8266_Cmd ("AT+CWQAP");
-//					delay_ms(100);					
+                    ESP8266_Cmd ("AT+CWQAP");
+					delay_ms(1000);					
                     ESP8266_JoinAP(UC_state.ssid_tmp,UC_state.pass_tmp);
                     configap = 1;//开始验证WIFI信息	
 					curjoin = 2;
@@ -209,44 +209,49 @@ void IPD_process(char * data,uint16_t alllen,ST_ESP_STATE* uc)
 
 void ESP8266_process(void)
 {
-	char data[1024];
-    char * p_data = data;
-	char * tmp = NULL;
-	uint16_t len = Wifi_Fram .InfBit.FramLength;
+//	char data[1024];
+//    char * p_data = data;
+//	char * tmp = NULL;
+//	uint16_t len = Wifi_Fram .InfBit.FramLength;
 
     ESP8266_AT_send(&UC_state);
+	
+	ESP8266_AT_rsp();
 	
 	if(UC_state.mode == STA){
 		net_check();
 	} 
+
 	
-	if(Wifi_Fram .InfBit .FramFinishFlag && UC_state.NetState != NET_LOSE){
-		
-		USART_ITConfig ( ESP8266_USARTx, USART_IT_RXNE, DISABLE ); //禁用串口接收中断		
-		Wifi_Fram.Data_RX_BUF[len] = '\0';
-		memcpy(data,Wifi_Fram.Data_RX_BUF,len);
-		DEBUG("process recv:%d,data:%s\r\n",len,data);
-		Wifi_Fram .InfBit.FramLength = 0;
-	    Wifi_Fram .InfBit .FramFinishFlag = 0;
-		USART_ITConfig ( ESP8266_USARTx, USART_IT_RXNE, ENABLE ); //使能串口接收中断
+//	if(Wifi_Fram .InfBit .FramFinishFlag && UC_state.NetState != NET_LOSE){
+//		
+//		USART_ITConfig ( ESP8266_USARTx, USART_IT_RXNE, DISABLE ); //禁用串口接收中断		
+//		Wifi_Fram.Data_RX_BUF[len] = '\0';
+//		memset(data,0,1024);
+//		memcpy(data,Wifi_Fram.Data_RX_BUF,len);
+//		DEBUG("process recv:%d,data:%s\r\n",len,data);
+////		 USART_printf(USART3,"process recv:%d,data:%s\r\n",len,data);
+//		Wifi_Fram .InfBit.FramLength = 0;
+//	    Wifi_Fram .InfBit .FramFinishFlag = 0;
+//		USART_ITConfig ( ESP8266_USARTx, USART_IT_RXNE, ENABLE ); //使能串口接收中断
 
-		//USART_ITConfig ( ESP8266_USARTx, USART_IT_RXNE, DISABLE ); //禁用串口接收中断
-		
-		tmp = strstr(data,"+IPD,");  //收到网络包，进行处理
-		
-		if( tmp ){
-			tmp = strstr(data,":"); //收到网络包，进行处理
-			p_data = tmp+1;
-			
-		}
-		  
-		IPD_process(p_data,len,&UC_state);
+//		//USART_ITConfig ( ESP8266_USARTx, USART_IT_RXNE, DISABLE ); //禁用串口接收中断
+//		
+//		tmp = strstr(data,"+IPD,");  //收到网络包，进行处理
+//		
+//		if( tmp ){
+//			tmp = strstr(data,":"); //收到网络包，进行处理
+//			p_data = tmp+1;
+//			
+//		}
+//		  
+//		IPD_process(p_data,len,&UC_state);
 
-	  
-//	   Wifi_Fram .InfBit.FramLength = 0;
-//	   Wifi_Fram .InfBit .FramFinishFlag = 0;
-//	   USART_ITConfig ( ESP8266_USARTx, USART_IT_RXNE, ENABLE ); //使能串口接收中断
-	}
+//	  
+////	   Wifi_Fram .InfBit.FramLength = 0;
+////	   Wifi_Fram .InfBit .FramFinishFlag = 0;
+////	   USART_ITConfig ( ESP8266_USARTx, USART_IT_RXNE, ENABLE ); //使能串口接收中断
+//	}
 	
 	
 

@@ -157,6 +157,7 @@ bool ESP8266_SendString( FunctionalState enumEnUnvarnishTx, char * pStr, u32 ulS
 void ESP8266_process(void);
 void IPD_process(char * data,uint16_t alllen,ST_ESP_STATE* uc);
 void ESP8266_AT_send(ST_ESP_STATE *uc);
+void ESP8266_AT_rsp(void);
 void autoconfig(void);
 
 
