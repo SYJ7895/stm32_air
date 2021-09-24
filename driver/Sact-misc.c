@@ -656,8 +656,8 @@ void LCD_Disp_Update(void)
 	if(ONOFF_State){
 		if( gNetState == 0 ){
 			
-			Tick = (Tick + 1)%1001;
-			if(Tick == 1000){
+			Tick = (Tick + 1)%8001;
+			if(Tick == 8000){
 				if( flicker){
 					//没有连接wifi，室内温度闪烁
 					LCD_Set_Temp(Thermal_Real,Temp_Pos_Real);

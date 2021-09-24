@@ -22,6 +22,7 @@ static uint32_t io_tick = 0;
 
 ST_Esp8266_Fram_Record Wifi_Fram = { 0 };
 ST_ESP_STATE UC_state = {0};
+static  char gdata[1024] ={0};
 
 #define CURSSID "ESPConfig"
 #define CURPASS "12345678"
@@ -629,8 +630,7 @@ void ESP8266_Netstate_set(uint8_t state)
 
 void ESP8266_AT_rsp(void)
 {
-	char data[1024] ={0};
-    char * p_data = data;
+    char * p_data = gdata;
 	char * tmp = NULL;
 	uint16_t len = 0;
  
@@ -640,25 +640,17 @@ void ESP8266_AT_rsp(void)
 		USART_ITConfig ( ESP8266_USARTx, USART_IT_RXNE, DISABLE ); //禁用串口接收中断
         len = Wifi_Fram .InfBit.FramLength;		
 		Wifi_Fram.Data_RX_BUF[len] = '\0';
-		memcpy(data,Wifi_Fram.Data_RX_BUF,len);
-		DEBUG("process recv:%d,data:%s\r\n",len,data);
-		USART_printf(USART3,"process recv:%d,data:%s\r\n",len,data);
+		memset(gdata,0,1024);
+		memcpy(gdata,Wifi_Fram.Data_RX_BUF,len);
+		DEBUG("uart recv:%d,data:%s\r\n",len,data);
+//		USART_printf(USART3,"uart recv:%d,data:%s\r\n",len,data);
 		Wifi_Fram .InfBit.FramLength = 0;
 	    Wifi_Fram .InfBit .FramFinishFlag = 0;
 		USART_ITConfig ( ESP8266_USARTx, USART_IT_RXNE, ENABLE ); //使能串口接收中断
 		
-//		USART_ITConfig ( ESP8266_USARTx, USART_IT_RXNE, DISABLE ); //禁用串口接收中断		
-//		data[Wifi_Fram .InfBit.FramLength] = '\0';
-//		DEBUG("rsp date:%d %s\r\n",Wifi_Fram .InfBit.FramLength, data);
-//		USART_printf(USART3,"rsp date:%d %s\r\n",Wifi_Fram .InfBit.FramLength, data);
-//		Wifi_Fram .InfBit .FramFinishFlag = 0;
-//	    Wifi_Fram .InfBit.FramLength = 0;
-//		
-//		USART_ITConfig ( ESP8266_USARTx, USART_IT_RXNE, ENABLE ); //使能串口接收中断
-
-		  if (strstr(data,"WIFI GOT IP") || strstr(data,"WIFI CONNECTED") ||
-			(strstr(data,"+CWJAP") && strstr(data,"OK")) ||
-		     (strstr(data,"OK")&& len == 6 && UC_state.State.join_ap == 0) ){ //成功接入AP
+    	  if (strstr(gdata,"WIFI GOT IP") || strstr(gdata,"WIFI CONNECTED") ||
+			(strstr(gdata,"+CWJAP") && strstr(gdata,"OK")) ||
+		     (strstr(gdata,"OK")&& len == 6 && UC_state.State.join_ap == 0) ){ //成功接入AP
 			
 //			DEBUG("join ap success state\r\n");
 			
@@ -689,10 +681,10 @@ void ESP8266_AT_rsp(void)
 					UC_state.State.join_ap = 1;
 				}
 			}
-		}else if(strstr(data,"+CWJAP")&&strstr(data,"FAIL")){  //接入AP失败
+		}else if(strstr(gdata,"+CWJAP")&&strstr(gdata,"FAIL")){  //接入AP失败
 //			DEBUG("join ap error\r\n");
 			if(UC_state.mode == STA && UC_state.State.change_ap == 1){
-				tmp = strstr(data,"+CWJAP:");
+				tmp = strstr(gdata,"+CWJAP:");
 				UC_state.change_ap_result = *(tmp+strlen("+CWJAP:")) - '0';
 			    UC_state.State.change_ap = 0;
 				DEBUG(" ESP_8266_JoinDefAP \r\n");
@@ -715,9 +707,9 @@ void ESP8266_AT_rsp(void)
 				}
 			}else{
 //				DEBUG(" join err mode %d change_ap %d \r\n",UC_state.mode,UC_state.State.join_ap);
-				Mcu2Iot_join_ap_rsp(data,&UC_state);
+				Mcu2Iot_join_ap_rsp(gdata,&UC_state);
 			}
-		}else if(strstr(data,"+CIPMODE")&&strstr(data,"OK")){  //进入透传模式
+		}else if(strstr(gdata,"+CIPMODE")&&strstr(gdata,"OK")){  //进入透传模式
                ESP8266_Cmd ("AT+CIPSEND");
 //			   DEBUG("enter Penetrate mode\r\n");
                UC_state.State.Penetrate = 1;
@@ -726,21 +718,21 @@ void ESP8266_AT_rsp(void)
 			   }else{
 			      ESP8266_Netstate_set(UPGRADE);
 			   }
-		}else if(strstr(data,"ALREADY CONNECTED") ||
-			     (strstr(data,"+CIPSTART")&&strstr(data,"OK"))){ //成功连接服务器
+		}else if(strstr(gdata,"ALREADY CONNECTED") ||
+			     (strstr(gdata,"+CIPSTART")&&strstr(gdata,"OK"))){ //成功连接服务器
 			     
 //		    DEBUG("already connect\r\n");
             UC_state.State.link = 1;
-		}else if(strstr(data,"+CIPSTAMAC:")){  //获取MAC
-            mac2sn(data,&UC_state);
-		}else if(strstr(data,"+IPD,")){
-			tmp = strstr(data,":"); //收到网络包，进行处理
+		}else if(strstr(gdata,"+CIPSTAMAC:")){  //获取MAC
+            mac2sn(gdata,&UC_state);
+		}else if(strstr(gdata,"+IPD,")){
+			tmp = strstr(gdata,":"); //收到网络包，进行处理
 			if( tmp ){
-			   tmp = strstr(data,":"); //收到网络包，进行处理
+			   tmp = strstr(gdata,":"); //收到网络包，进行处理
 			   p_data = tmp+1;
 			}
 			IPD_process(p_data,len,&UC_state);
-		}else if(strstr(data,"ERROR") || strstr(data,"wdt reset")){
+		}else if(strstr(gdata,"ERROR") || strstr(gdata,"wdt reset")){
 			ESP8266_ExitUnvarnishSend (); 
 			delay_ms(200);
 			ESP8266_Rst();
@@ -792,6 +784,7 @@ void ESP8266_AT_send(ST_ESP_STATE *uc)
 		 
 		  if( !uc->State.getsn){
 		 	 get_mac2sn();
+			 return;
 		 }
 		
 	     if(uc->State.getsn && !uc->State.join_ap){
@@ -806,6 +799,7 @@ void ESP8266_AT_send(ST_ESP_STATE *uc)
 			 }else{
 				 ESP_8266_JoinDefAP(uc);				 
 			 }
+			 return;
 		 	
 		 }
 		 
@@ -821,6 +815,7 @@ void ESP8266_AT_send(ST_ESP_STATE *uc)
 			  delay_ms(1000);
 			  ESP8266_Link_Server (enumTCP, uc->server_ip, ESP8266_TcpServer_Port, Single_ID_0);
 			}
+			return;
 		 }
 
 		 if(uc->State.link && !uc->State.Penetrate){
@@ -884,8 +879,8 @@ void ESP8266_Init ( void )
 	   ESP8266_Enable_MultipleId(DISABLE);
 	   delay_ms(300);
        UC_state.mode = STA;
-	   ESP_8266_JoinDefAP(&UC_state);
-	   delay_ms(300);
+//	   ESP_8266_JoinDefAP(&UC_state);
+//	   delay_ms(300);
 	   UC_state.State.isUpgrade = 0;	  
 	}
 	
