@@ -327,12 +327,12 @@ void GPIO_Config(void)
     //====================== GPIO 空调开关风速控制 初始化==========================//
 	//PA1---->AC_DET PA11 ---> RELAY_LOW  PA12 ---> RELAY_OPEN  PB3----->RELAY_MID 
 	GPIO_InitStructure.GPIO_Pin   =  GPIO_Pin_1 | GPIO_Pin_11 | GPIO_Pin_12;
-	GPIO_InitStructure.GPIO_Mode  =  GPIO_Mode_Out_OD ;
+	GPIO_InitStructure.GPIO_Mode  =  GPIO_Mode_Out_PP ;
 	GPIO_InitStructure.GPIO_Speed =  GPIO_Speed_50MHz;
 	GPIO_Init(GPIOA,&GPIO_InitStructure);	
 
 	GPIO_InitStructure.GPIO_Pin   =  GPIO_Pin_3;
-	GPIO_InitStructure.GPIO_Mode  =  GPIO_Mode_Out_OD ;
+	GPIO_InitStructure.GPIO_Mode  =  GPIO_Mode_Out_PP ;
 	GPIO_InitStructure.GPIO_Speed =  GPIO_Speed_50MHz;
 	GPIO_Init(GPIOB,&GPIO_InitStructure);
     //设置为低电平，关闭状态
